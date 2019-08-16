@@ -706,12 +706,13 @@ module Make
               dump_global_type s t in
 
             match memory,t,do_staticalloc with
-            | Direct,Array _,false ->
+            | Direct,Array _,flse ->
                 O.fi "%s *%s;" pp_t (tag_malloc s) ;
                 O.fi "%s *%s;" pp_t s
             | Direct,_,_ ->
                 if do_noalign test s then  O.fi "%s *%s;" pp_t (tag_malloc s) ;
-                O.fi "%s%s *%s;" pp_t indirect_star s
+                O.fi "int %s_shm;" s;
+                List.iter (fun (proc,_) -> O.fi "%s *%s%d;" pp_t s proc) test.T.code
             | Indirect,_,_->
                 O.fi "%s%s *%s;" pp_t indirect_star s)
           test.T.globals ;
@@ -1276,6 +1277,13 @@ module Make
           O.fx  indent "_a->%s = malloc_check(%s*sizeof(*(_a->%s)));"
             name sz name
 
+        (* TODO: This currently only works for direct access, but indirect access is useful for observing various behaviors more easily; might need to generalize *)
+        and shm_gen sz ident name =
+          O.fx ident "_a->%s = shm_open(\"/blah%s\", O_RDWR | O_CREAT, 0600);" name name;
+          O.fx ident "size_t size%s = %s*sizeof(*(_a->%s0));" name sz name;
+          O.fx ident "ftruncate(_a->%s, size%s);" name name;
+          List.iter (fun (proc,_) -> O.fx ident "_a->%s%d = mmap(NULL, size%s, PROT_READ | PROT_WRITE, MAP_SHARED, _a->%s, 0);" name proc name name) test.T.code; 
+
         and set_mem_gen sz indent name =
           O.fx indent "_a->%s = &%s[id*%s];" name name sz
 
@@ -1356,7 +1364,7 @@ module Make
               O.fx indent
                 "for (int _i=0 ; _i < size_of_test ; _i++) _a->%s[_i] = pm_create();" a
           | Direct,_ ->
-              (if do_noalign test a then set_or_malloc3 a else set_or_malloc)
+              (if do_noalign test a then set_or_malloc3 a else shm_gen "size_of_test")
                 indent a
           | Indirect,_ -> set_or_malloc indent a)
             test.T.globals ;

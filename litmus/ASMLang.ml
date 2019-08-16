@@ -51,8 +51,8 @@ module RegMap = A.RegMap)
 
       let checkVal f v = f v
 
-      let compile_addr_inline = match O.mode with
-      | Mode.Std -> sprintf "_a->%s[_i]"
+      let compile_addr_inline proc = match O.mode with
+      | Mode.Std -> (fun s -> sprintf "_a->%s%d[_i]" s proc)
       | Mode.PreSi -> sprintf "*%s"
 
       and compile_addr_fun x = sprintf "*%s" x
@@ -377,7 +377,7 @@ module RegMap = A.RegMap)
                 Tmpl.compile_presi_out_reg proc reg in
 
         do_dump
-          compile_val_inline compile_addr_inline
+          compile_val_inline (compile_addr_inline proc)
           (fun x -> sprintf "_a->%s[_i]" (Tmpl.addr_cpy_name x proc))
           compile_out_reg
           chan indent env proc t
