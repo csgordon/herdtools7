@@ -398,6 +398,10 @@ module Make
         O.o "#include <unistd.h>" ;
         O.o "#include <errno.h>" ;
         O.o "#include <assert.h>" ;
+        O.o "#include <sys/mman.h>" ;
+        O.o "#include <sys/types.h>" ;
+        O.o "#include <sys/stat.h>" ;
+        O.o "#include <fcntl.h>" ;
         O.o "#include <time.h>" ;
         O.o "#include <limits.h>" ;
         O.o "#include \"utils.h\"" ;
@@ -1283,9 +1287,9 @@ module Make
 
         (* TODO: This currently only works for direct access, but indirect access is useful for observing various behaviors more easily; might need to generalize *)
         and shm_gen sz ident name =
-          O.fx ident "_a->%s = shm_open(\"/blah%s\", O_RDWR | O_CREAT, 0600);" name name;
+          O.fx ident "_a->%s_shm = shm_open(\"/blah%s\", O_RDWR | O_CREAT, 0600);" name name;
           O.fx ident "_a->%s_size = %s*sizeof(*(_a->%s0));" name sz name;
-          O.fx ident "ftruncate(_a->%s, _a->%s_size);" name name;
+          O.fx ident "ftruncate(_a->%s_shm, _a->%s_size);" name name;
           List.iter (fun (proc,_) -> O.fx ident "_a->%s%d = mmap(NULL, _a->%s_size, PROT_READ | PROT_WRITE, MAP_SHARED, _a->%s_shm, 0);" name proc name name) test.T.code; 
 
         and set_mem_gen sz indent name =
