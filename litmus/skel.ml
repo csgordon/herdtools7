@@ -1169,11 +1169,12 @@ module Make
           O.f "}\n" ;
 
 (* STABILIZE *)
+          (* TODO: Check on stabilize_globals internals; currently there's a shared copy used for stabilization, and I'm leaving it shared for now; I'm not quite sure what it's for *)
           if  do_safer_write then begin
             let locs = U.get_observed_globals test in
             if not (StringSet.is_empty locs) then begin
               O.f "" ;
-              O.f "static void stabilize_globals(int _id, ctx_t *_a) {" ;
+              O.f "static void stabilize_globals%d(int _id, ctx_t *_a) {" proc;
               O.fi "int size_of_test = _a->_p->size_of_test;" ;
               O.f "" ;
               StringSet.iter
@@ -1181,8 +1182,8 @@ module Make
                   let loc = A.Location_global loc in
                   let a = dump_loc_name loc
                   and t = U.find_type loc env in
-                  O.fi "%s%s *%s = _a->%s;" (dump_global_type a t)
-                    indirect_star a a ;
+                  O.fi "%s%s *%s = _a->%s%d;" (dump_global_type a t)
+                    indirect_star a a proc;
                   O.fi "%s **cpy_%s = _a->cpy_%s;" (dump_global_type a t) a a)
                 locs ;
               O.f "" ;
@@ -1961,7 +1962,7 @@ module Make
               loop_test_postlude indent
             end ;
             if do_safer && do_collect_after && have_observed_globals test then begin
-              O.fi "stabilize_globals(%i,_a);" proc ;
+              O.fi "stabilize_globals%d(%i,_a);" proc proc ;
             end ;
             O.oi "mbar();" ;
             let r = if do_collect then "hist" else "NULL" in
@@ -2177,6 +2178,7 @@ module Make
                   O.fiii "%s *%s = %s;"
                     t
                     (dump_loc_copy loc)
+                    (* TODO: Need to do these checks for *each* vaddr view, not just one *)
                     (U.do_load (CType.Base t) (dump_ctx_loc "ctx." loc))
               | t ->
                   Warn.user_error "array type expected for '%s', type %s found"
