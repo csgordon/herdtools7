@@ -1088,14 +1088,14 @@ module Make
 
       let do_copy t loc1 loc2 = U.do_store t loc1 (U.do_load t loc2)
 
-      let dump_check_globals env doc test =
+      let dump_check_globals env doc test proc =
         if do_check_globals then begin
 (* CHECKGLOBALS *)
           O.f "/**************************************/" ;
-          O.f "/* Prefetch (and check) global values */" ;
+          O.f "/* Prefetch (and check) global values (Process %d) */" proc;
           O.f "/**************************************/" ;
           O.f "" ;
-          O.f "static void check_globals(ctx_t *_a) {" ;
+          O.f "static void check_globals%d(ctx_t *_a) {" proc;
 (* LOCALS *)
           List.iter
             (fun (a,t) ->
@@ -1112,7 +1112,7 @@ module Make
                             (dump_global_type a t) a a
                       end
                   | Direct ->
-                      O.fi "%s *%s = _a->%s;" (dump_global_type a t) a a)
+                      O.fi "%s *%s = _a->%s%d;" (dump_global_type a t) a a proc)
             test.T.globals ;
 (* LOOPS *)
           loop_test_prelude indent "_a->_p->" ;
@@ -1726,7 +1726,7 @@ module Make
               O.fi "%s(_ecpu%s);" fun_name arg
             end ;
             if do_check_globals then begin
-              O.fi "check_globals(_a);"
+              O.fi "check_globals%d(_a);" proc
             end ;
             begin match barrier with
             | User|User2|UserFence|UserFence2 ->
@@ -2888,7 +2888,8 @@ module Make
         dump_filter env test ;
         dump_cond_fun env test ;
         dump_defs_outs doc env test ;
-        dump_check_globals env doc test ;
+        (* We emit one check globals for *each* process, to ensure that each process only accesses globals through its own virtual address range (rather than allowing P1 to read P0's addresses during global check, which might trigger extra synchronization) *)
+        List.iter (fun (proc,_) -> dump_check_globals env doc test proc) test.T.code ;
         dump_templates env doc.Name.name test ;
         dump_reinit env test cpys ;
         dump_zyva doc cpys env test ;
