@@ -337,6 +337,9 @@ module Make
       let dump_a_leftval a = match memory with
       | Direct -> sprintf "_a->%s[_i]" a
       | Indirect -> sprintf "*(_a->%s[_i])" a
+      let dump_a_leftval_shm a proc = match memory with
+      | Direct -> sprintf "_a->%s%d[_i]" a proc
+      | Indirect -> sprintf "*(_a->%s%d[_i])" a proc
 
 (* Right value *)
       let dump_a_addr = match memory with
@@ -712,6 +715,7 @@ module Make
             | Direct,_,_ ->
                 if do_noalign test s then  O.fi "%s *%s;" pp_t (tag_malloc s) ;
                 O.fi "int %s_shm;" s;
+                O.fi "size_t %s_size;" s;
                 List.iter (fun (proc,_) -> O.fi "%s *%s%d;" pp_t s proc) test.T.code
             | Indirect,_,_->
                 O.fi "%s%s *%s;" pp_t indirect_star s)
@@ -1280,9 +1284,9 @@ module Make
         (* TODO: This currently only works for direct access, but indirect access is useful for observing various behaviors more easily; might need to generalize *)
         and shm_gen sz ident name =
           O.fx ident "_a->%s = shm_open(\"/blah%s\", O_RDWR | O_CREAT, 0600);" name name;
-          O.fx ident "size_t size%s = %s*sizeof(*(_a->%s0));" name sz name;
-          O.fx ident "ftruncate(_a->%s, size%s);" name name;
-          List.iter (fun (proc,_) -> O.fx ident "_a->%s%d = mmap(NULL, size%s, PROT_READ | PROT_WRITE, MAP_SHARED, _a->%s, 0);" name proc name name) test.T.code; 
+          O.fx ident "_a->%s_size = %s*sizeof(*(_a->%s0));" name sz name;
+          O.fx ident "ftruncate(_a->%s, _a->%s_size);" name name;
+          List.iter (fun (proc,_) -> O.fx ident "_a->%s%d = mmap(NULL, _a->%s_size, PROT_READ | PROT_WRITE, MAP_SHARED, _a->%s_shm, 0);" name proc name name) test.T.code; 
 
         and set_mem_gen sz indent name =
           O.fx indent "_a->%s = &%s[id*%s];" name name sz
@@ -1462,11 +1466,14 @@ module Make
 
 (* Finalization, called once *)
         let free indent name = O.fx indent "free((void *)_a->%s);" name
+        and munmap indent name proc = O.fx indent "munmap((void *)_a->%s%d, _a->%s_size);" name proc name
         and pb_free name = O.fi "pb_free(_a->%s);" name
         and po_free name = O.fi "po_free(_a->%s);" name in
 
         let nop_or_free =
           if do_dynamicalloc then free else fun _ _ -> () in
+        let nop_or_munmap =
+          if do_dynamicalloc then munmap else fun _ _ _ -> () in
 
         O.o "static void finalize(ctx_t *_a) {" ;
         if do_contiguous then
@@ -1482,7 +1489,9 @@ module Make
               | Base "mtx_t" ->
                   O.fi "for (int _i = 0 ; _i < _a->_p->size_of_test ; _i++) pm_free(_a->%s[_i]);" a ;
                   nop_or_free indent a
-              | _ -> nop_or_free indent tag
+              | _ -> (*nop_or_free*)
+                 (List.iter (fun (proc,_) -> nop_or_munmap indent tag proc) test.T.code;
+                 O.fx indent "close(_a->%s_shm);" tag)
               end)
             test.T.globals ;
         begin match memory with
@@ -1574,8 +1583,8 @@ module Make
                         (sprintf "(%s)[_j]" pp_a) pp_v in
                     sprintf "for (int _j = 0 ; _j < %i; _j++) %s" sz ins
                 | _ ->
-                    U.do_store t
-                      (dump_a_leftval a) (dump_a_v_casted v)
+                   String.concat (";\n  " ^ Indent.as_string indent)
+                   (List.map (fun (proc,_) -> U.do_store t (dump_a_leftval_shm a proc) (dump_a_v_casted v)) test.T.code)
                 end in
               O.fii "%s;" ins
             with Exit -> ())
