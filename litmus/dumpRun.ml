@@ -345,9 +345,13 @@ let dump_shell_cont arch sources utils =
       | TargetOS.Linux|TargetOS.AIX
       | TargetOS.FreeBsd|TargetOS.Android8
         -> 's' in
+      let isLinux = match Cfg.targetos with | TargetOS.Linux -> true | _ -> false in
       fprintf chan "%%.exe:%%.%c $(UTILS)\n" src_ext ;
-      fprintf chan
-        "\t$(GCC) $(GCCOPTS) $(LINKOPTS) -o $@ $(UTILS) $<\n" ;
+      if isLinux
+        then fprintf chan
+               "\t$(GCC) $(GCCOPTS) $(LINKOPTS) -o $@ $(UTILS) $< -lrt\n" 
+        else fprintf chan
+               "\t$(GCC) $(GCCOPTS) $(LINKOPTS) -o $@ $(UTILS) $<\n" ;
       fprintf chan "\n" ;
 (* .s pattern rule *)
       fprintf chan "%%.s:%%.c\n" ;
